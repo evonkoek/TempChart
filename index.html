@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PCM Test Compare</title>
+<style>
+:root{--bg:#fff;--fg:#1c1c1e;--mut:#6b6b70;--card:#f4f4f6;--bd:#d9d9de;--ac:#2563eb;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17171a;--fg:#ececf0;--mut:#9a9aa3;--card:#232328;--bd:#3a3a42;--ac:#6ea0ff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17171a;--fg:#ececf0;--mut:#9a9aa3;--card:#232328;--bd:#3a3a42;--ac:#6ea0ff;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;max-width:1000px;margin-inline:auto}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:15px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px;width:100%}
+button{background:var(--ac);color:#fff;border:0;cursor:pointer;width:auto;padding:9px 16px}
+button.g{background:none;color:var(--mut);border:1px solid var(--bd);padding:3px 8px;font-size:12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.t{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--bd)}
+.t:first-of-type{border-top:0}.t span.m{color:var(--mut);font-size:12px;flex:1}
+.dot{width:10px;height:10px;border-radius:50%}
+.cv{position:relative;height:380px}
+.sc{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}th:first-child,td:first-child{text-align:left}
+#msg{color:var(--mut);font-size:13px;margin-top:8px}
+</style></head><body>
+<h1>PCM Test Compare</h1>
+<div class="card"><h2>Upload a test</h2>
+<div class="grid">
+<div><label>Name of the test</label><input id="n" placeholder="e.g. Test 1"></div>
+<div><label># PCM’s total</label><input id="a" type="number" min="0"></div>
+<div><label># PCM’s top</label><input id="b" type="number" min="0"></div>
+<div><label># PCM’s bottom</label><input id="c" type="number" min="0"></div>
+<div><label>Type of PCM’s</label><input id="d"></div>
+<div><label>CSV file</label><input id="f" type="file" accept=".csv,text/csv,text/plain"></div>
+</div>
+<div class="row" style="margin-top:10px"><button id="up">Add test</button><span id="msg"></span></div></div>
+<div class="card"><h2>Tests</h2><div id="list"><span style="color:var(--mut)">No tests yet.</span></div></div>
+<div class="card"><div class="grid" style="margin-bottom:10px">
+<div><label>X axis</label><select id="xs"><option value="e">Elapsed time (h) – compare tests</option><option value="c">Date and time</option></select></div>
+<div><label>Y axis</label><select id="ys"></select></div></div>
+<div class="cv"><canvas id="ch"></canvas></div>
+<div class="row" id="ex" style="margin-top:10px"><button id="png">Export PNG</button><button id="pdf">Export PDF</button><span id="em" style="color:var(--mut);font-size:13px"></span></div></div>
+<div class="card"><h2>Summary (selected Y value)</h2><div class="sc"><table id="st"></table></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const Y=[['Pressure (mpa)',0,1],['Resistance',1,1],['Flow (µL/min)',2,1],['Temperature (°C)',3,.01],['Systolic (mpa)',4,1],['Diastolic (mpa)',5,1],['Runtime (ms)',6,1]];
+const COL=['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#65a30d'];
+Y.forEach((y,i)=>$('ys').add(new Option(y[0],i)));$('ys').value=3;
+let tests=[],sel=new Set(),chart;
+const dbp=new Promise(r=>{try{const q=indexedDB.open('pcm',1);q.onupgradeneeded=()=>q.result.createObjectStore('t',{keyPath:'id'});q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)}catch(e){r(null)}});
+async function idb(mode,fn){const d=await dbp;if(!d)return null;return new Promise(r=>{try{const tx=d.transaction('t',mode);const q=fn(tx.objectStore('t'));tx.oncomplete=()=>r(q&&q.result);tx.onerror=()=>r(null)}catch(e){r(null)}})}
+function parse(txt){const L=txt.split(/\r?\n/),n=L.length,t=new Float64Array(n),c=[];for(let k=0;k<7;k++)c.push(new Float64Array(n));let m=0;
+for(const l of L){if(!l)continue;const p=l.split(','),ts=Date.parse(p[0]);if(isNaN(ts))continue;t[m]=ts;for(let k=0;k<7;k++)c[k][m]=+p[k+2];m++}
+return{t:t.slice(0,m),c:c.map(x=>x.slice(0,m))}}
+$('up').onclick=async()=>{const f=$('f').files[0];if(!f){$('msg').textContent='Choose a CSV file first.';return}
+$('msg').textContent='Reading…';const p=parse(await f.text());if(!p.t.length){$('msg').textContent='No valid rows found.';return}
+const o={id:Date.now(),name:$('n').value.trim()||f.name,total:$('a').value,top:$('b').value,bottom:$('c').value,type:$('d').value.trim(),...p};
+tests.push(o);sel.add(o.id);await idb('readwrite',s=>s.put(o));$('msg').textContent=`Added ${o.t.length.toLocaleString()} rows.`;$('f').value='';render()};
+async function del(id){tests=tests.filter(t=>t.id!==id);sel.delete(id);await idb('readwrite',s=>s.delete(id));render()}
+function list(){const e=$('list');if(!tests.length){e.innerHTML='<span style="color:var(--mut)">No tests yet.</span>';return}
+e.innerHTML='';tests.forEach((t,i)=>{const d=document.createElement('div');d.className='t';
+d.innerHTML=`<input type="checkbox" style="width:auto" ${sel.has(t.id)?'checked':''}><span class="dot" style="background:${COL[i%8]}"></span><b></b><span class="m"></span><button class="g">Remove</button>`;
+d.querySelector('b').textContent=t.name;
+d.querySelector('.m').textContent=`PCM total ${t.total||'–'} · top ${t.top||'–'} · bottom ${t.bottom||'–'} · ${t.type||'–'} · ${t.t.length.toLocaleString()} rows`;
+d.querySelector('input').onchange=ev=>{ev.target.checked?sel.add(t.id):sel.delete(t.id);draw()};
+d.querySelector('button').onclick=()=>del(t.id);e.appendChild(d)})}
+const BND={id:'bnd',afterDatasetsDraw(c){if(+$('ys').value!==3)return;const{ctx,chartArea:a,scales:{y}}=c;ctx.save();ctx.setLineDash([6,4]);ctx.lineWidth=1.5;ctx.font='12px system-ui,sans-serif';
+[[4,'4 °C'],[12,'12 °C']].forEach(([v,l])=>{const py=y.getPixelForValue(v);if(py<a.top||py>a.bottom)return;ctx.strokeStyle=ctx.fillStyle='#dc2626';ctx.beginPath();ctx.moveTo(a.left,py);ctx.lineTo(a.right,py);ctx.stroke();ctx.fillText(l,a.right-42,py-5)});ctx.restore()}};
+function draw(){const yi=+$('ys').value,[yn,,sc]=Y[yi],ex=$('xs').value==='e',ds=[],rows=[];
+tests.forEach((t,i)=>{if(!sel.has(t.id))return;const n=t.t.length,t0=t.t[0],ys=t.c[yi],pts=new Array(n);let mn=Infinity,mx=-Infinity,sm=0;
+for(let k=0;k<n;k++){const v=ys[k]*sc;pts[k]={x:ex?(t.t[k]-t0)/36e5:t.t[k],y:v};if(v<mn)mn=v;if(v>mx)mx=v;sm+=v}
+ds.push({label:t.name,data:pts,borderColor:COL[i%8],borderWidth:1.5,pointRadius:0,parsing:false});
+rows.push([t.name,((t.t[n-1]-t0)/36e5).toFixed(1),mn.toFixed(2),mx.toFixed(2),(sm/n).toFixed(2),(ys[n-1]*sc).toFixed(2)])});
+$('st').innerHTML='<tr><th>Test</th><th>Duration (h)</th><th>Min</th><th>Max</th><th>Mean</th><th>Last</th></tr>'+rows.map(r=>'<tr>'+r.map(x=>`<td>${x.replace?x.replace(/</g,'&lt;'):x}</td>`).join('')+'</tr>').join('');
+if(chart)chart.destroy();
+const fg=getComputedStyle(document.documentElement).getPropertyValue('--mut').trim(),gr=getComputedStyle(document.documentElement).getPropertyValue('--bd').trim();
+chart=new Chart($('ch'),{type:'line',plugins:[BND],data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false,axis:'x'},
+plugins:{decimation:{enabled:true,algorithm:'lttb',samples:1200},legend:{labels:{color:fg}}},
+scales:{x:{type:'linear',title:{display:true,text:ex?'Elapsed time (h)':'Date and time (UTC)',color:fg},ticks:{color:fg,maxTicksLimit:8,callback:v=>ex?v:new Date(v).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})},grid:{color:gr}},
+y:{suggestedMin:yi===3?3:undefined,suggestedMax:yi===3?13:undefined,title:{display:true,text:yn,color:fg},ticks:{color:fg},grid:{color:gr}}}}})}
+function render(){list();draw()}
+const dl={save:async({filename,data})=>{const u=URL.createObjectURL(data),k=document.createElement('a');k.href=u;k.download=filename;document.body.appendChild(k);k.click();k.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);return{status:'saved'}}};
+async function expo(kind){if(!dl||!chart||!chart.data.datasets.length){$('em').textContent='Select at least one test first.';return}
+try{const o=chart.options,sc=o.scales,keep=[sc.x.ticks.color,sc.y.ticks.color,sc.x.title.color,sc.y.title.color,sc.x.grid.color,sc.y.grid.color,o.plugins.legend.labels.color];
+sc.x.ticks.color=sc.y.ticks.color=sc.x.title.color=sc.y.title.color=o.plugins.legend.labels.color='#333';sc.x.grid.color=sc.y.grid.color='#ddd';o.devicePixelRatio=3;chart.resize();chart.update('none');
+const s=$('ch'),c=document.createElement('canvas');c.width=s.width;c.height=s.height;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(s,0,0);
+[sc.x.ticks.color,sc.y.ticks.color,sc.x.title.color,sc.y.title.color,sc.x.grid.color,sc.y.grid.color,o.plugins.legend.labels.color]=keep;o.devicePixelRatio=window.devicePixelRatio||1;chart.resize();chart.update('none');
+const name='pcm-'+Y[+$('ys').value][0].split(' ')[0].toLowerCase();
+if(kind==='png'){const b=await new Promise(r=>c.toBlob(r,'image/png'));await dl.save({filename:name+'.png',data:b})}
+else{const J=window.jspdf&&window.jspdf.jsPDF;if(!J){$('em').textContent='PDF library not loaded.';return}
+const d=new J({orientation:'landscape',unit:'mm',format:'a4'}),w=277,h=Math.min(w*c.height/c.width,170);d.setFontSize(14);d.text('PCM Test Compare – '+Y[+$('ys').value][0],10,12);
+d.addImage(c.toDataURL('image/png'),'PNG',10,18,h*c.width/c.height,h);
+let y=18+h+8;d.setFontSize(9);chart.data.datasets.forEach(t=>{const m=tests.find(q=>q.name===t.label);if(y<200){d.text(t.label+(m?'  |  PCM total '+(m.total||'-')+', top '+(m.top||'-')+', bottom '+(m.bottom||'-')+', type '+(m.type||'-'):''),10,y);y+=5}});
+await dl.save({filename:name+'.pdf',data:d.output('blob')})}
+$('em').textContent=''}catch(e){$('em').textContent=e&&e.code==='declined'?'':'Export failed.'}}
+$('png').onclick=()=>expo('png');$('pdf').onclick=()=>expo('pdf');
+$('xs').onchange=$('ys').onchange=draw;
+matchMedia('(prefers-color-scheme:dark)').onchange=draw;
+(async()=>{const all=await idb('readonly',s=>s.getAll());if(all){tests=all.sort((a,b)=>a.id-b.id);tests.forEach(t=>sel.add(t.id))}render()})();
+</script></body></html>

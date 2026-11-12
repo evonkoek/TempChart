@@ -38,7 +38,7 @@ th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--bd);white-s
 </div>
 <div class="row" style="margin-top:10px"><button id="up">Add test</button><span id="msg"></span></div></div>
 <div class="card"><h2>Tests</h2><div id="list"><span style="color:var(--mut)">No tests yet.</span></div></div>
-<div class="card"><h2>Time boundary</h2><div class="row"><label class="ov" style="margin:0"><input type="checkbox" id="cut" checked>Cut off data after</label><input id="cuth" type="number" min="0" step="1" value="32" style="width:90px"><span>hours from the start of each test</span></div><div style="color:var(--mut);font-size:13px;margin-top:6px">Untick to show the full length of each test. Applies to both graphs and the summary tables.</div></div>
+<div class="card"><h2>Boundaries</h2><div class="row"><label class="ov" style="margin:0"><input type="checkbox" id="cut" checked>Cut off data after</label><input id="cuth" type="number" min="0" step="1" value="32" style="width:90px"><span>hours from the start of each test</span></div><div style="color:var(--mut);font-size:13px;margin-top:6px">Untick to show the full length of each test. Applies to both graphs and the summary tables.</div><div class="row" style="margin-top:14px"><label class="ov" style="margin:0"><input type="checkbox" id="tb" checked>Show temperature boundaries: lower</label><input id="tl" type="number" step="0.5" value="4" style="width:80px"><span>°C, upper</span><input id="tu" type="number" step="0.5" value="12" style="width:80px"><span>°C</span></div></div>
 <div id="panels"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -49,7 +49,7 @@ const COL=['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d'
 const P=i=>`<div class="card"><h2>Graph ${i}</h2><div class="grid" style="margin-bottom:10px"><div><label>X axis</label><select id="xs${i}"><option value="e">Elapsed time (h) – compare tests</option><option value="c">Date and time</option></select></div><div><label>Y axis</label><select id="ys${i}"></select></div></div><div class="cv"><canvas id="ch${i}"></canvas></div><div class="row" id="ex${i}" style="margin-top:10px"><button id="png${i}">Export PNG</button><button id="pdf${i}">Export PDF</button><span id="em${i}" style="color:var(--mut);font-size:13px"></span></div>${i==1?'<label class="ov"><input type="checkbox" id="ov">Show Graph 1 as a layer in Graph 2 (semi-transparent)</label>':''}<div class="sc" style="margin-top:10px"><table id="st${i}"></table></div></div>`;
 $('panels').innerHTML=P(1)+P(2);
 [1,2].forEach(i=>{Y.forEach((y,k)=>$('ys'+i).add(new Option(y[0],k)));$('ys'+i).value=3;$('xs'+i).onchange=$('ys'+i).onchange=draw;$('png'+i).onclick=()=>expo(i,'png');$('pdf'+i).onclick=()=>expo(i,'pdf')});
-$('ov').onchange=draw;$('cut').onchange=$('cuth').onchange=draw;
+$('ov').onchange=draw;$('cut').onchange=$('cuth').onchange=$('tb').onchange=$('tl').onchange=$('tu').onchange=draw;
 let tests=[],sel=[new Set(),new Set()],chart=[null,null];
 const dbp=new Promise(r=>{try{const q=indexedDB.open('pcm',1);q.onupgradeneeded=()=>q.result.createObjectStore('t',{keyPath:'id'});q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)}catch(e){r(null)}});
 async function idb(mode,fn){const d=await dbp;if(!d)return null;return new Promise(r=>{try{const tx=d.transaction('t',mode);const q=fn(tx.objectStore('t'));tx.oncomplete=()=>r(q&&q.result);tx.onerror=()=>r(null)}catch(e){r(null)}})}
@@ -71,12 +71,13 @@ d.querySelector('b').textContent=t.name;
 d.querySelector('.m').textContent=`PCM total ${t.total||'–'} · top ${t.top||'–'} · bottom ${t.bottom||'–'} · ${t.type||'–'} · ${t.t.length.toLocaleString()} rows`;
 d.querySelectorAll('input').forEach((c,k)=>c.onchange=ev=>{ev.target.checked?sel[k].add(t.id):sel[k].delete(t.id);draw()});
 d.querySelector('button').onclick=()=>del(t.id);e.appendChild(d)})}
-const bnd=f=>({id:'bnd',afterDatasetsDraw(c){const{ctx,chartArea:a,scales}=c;ctx.save();ctx.setLineDash([6,4]);ctx.lineWidth=1.5;ctx.font='12px system-ui,sans-serif';
-Object.keys(f).filter(k=>f[k]).forEach((k,n)=>{[[4,'4 °C'],[12,'12 °C']].forEach(([v,l])=>{const py=scales[k].getPixelForValue(v);if(py<a.top||py>a.bottom)return;ctx.strokeStyle=ctx.fillStyle=n?'#ea580c':'#dc2626';ctx.beginPath();ctx.moveTo(a.left,py);ctx.lineTo(a.right,py);ctx.stroke();ctx.fillText(l,a.right-42,py-5)})});ctx.restore()}});
+const bnd=f=>({id:'bnd',afterDatasetsDraw(c){if(!$('tb').checked)return;const{ctx,chartArea:a,scales}=c;ctx.save();ctx.setLineDash([6,4]);ctx.lineWidth=1.5;ctx.font='12px system-ui,sans-serif';
+Object.keys(f).filter(k=>f[k]).forEach((k,n)=>{[[+$('tl').value,$('tl').value+' °C'],[+$('tu').value,$('tu').value+' °C']].forEach(([v,l])=>{const py=scales[k].getPixelForValue(v);if(py<a.top||py>a.bottom)return;ctx.strokeStyle=ctx.fillStyle=n?'#ea580c':'#dc2626';ctx.beginPath();ctx.moveTo(a.left,py);ctx.lineTo(a.right,py);ctx.stroke();ctx.fillText(l,a.right-42,py-5)})});ctx.restore()}});
 function ser(t,ti,yi,ex,label,dash,ax){const t0=t.t[0],lim=$('cut').checked?t0+Math.max(0,+$('cuth').value||0)*36e5:Infinity,ys=t.c[yi],sc=Y[yi][2],pts=[];let mn=Infinity,mx=-Infinity,sm=0,n=0;
 for(let k=0;k<t.t.length;k++){if(t.t[k]>lim)break;const v=ys[k]*sc;pts.push({x:ex?(t.t[k]-t0)/36e5:t.t[k],y:v});n=k+1;if(v<mn)mn=v;if(v>mx)mx=v;sm+=v}
 return{ds:{label:t.name+(dash?' (G1)':''),data:pts,borderColor:COL[ti%8]+(dash?'4D':''),borderWidth:1.5,order:dash?1:0,pointRadius:0,parsing:false,yAxisID:ax},
 row:[label,((t.t[n-1]-t0)/36e5).toFixed(1),mn.toFixed(2),mx.toFixed(2),(sm/n).toFixed(2),(ys[n-1]*sc).toFixed(2)]}}
+const tr=k=>k===3&&$('tb').checked?{suggestedMin:Math.min(+$('tl').value,+$('tu').value)-1,suggestedMax:Math.max(+$('tl').value,+$('tu').value)+1}:{};
 function drawP(i){const x=i-1,yi=+$('ys'+i).value,ex=$('xs'+i).value==='e',ds=[],rows=[],yi1=+$('ys1').value;
 const lay=i===2&&$('ov').checked&&sel[0].size>0,two=lay&&yi1!==yi;
 tests.forEach((t,ti)=>{if(!sel[x].has(t.id))return;const s=ser(t,ti,yi,ex,t.name,undefined,'y');ds.push(s.ds);rows.push(s.row)});
@@ -86,8 +87,8 @@ if(chart[x])chart[x].destroy();
 const st=getComputedStyle(document.documentElement),fg=st.getPropertyValue('--mut').trim(),gr=st.getPropertyValue('--bd').trim();
 const ax=(txt,extra)=>({title:{display:true,text:txt,color:fg},ticks:{color:fg},grid:{color:gr},...extra});
 const sc={x:{type:'linear',title:{display:true,text:ex?'Elapsed time (h)':'Date and time (UTC)',color:fg},ticks:{color:fg,maxTicksLimit:8,callback:v=>ex?v:new Date(v).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})},grid:{color:gr}},
-y:ax(Y[yi][0],{suggestedMin:yi===3?3:undefined,suggestedMax:yi===3?13:undefined})};
-if(two)sc.y2=ax(Y[yi1][0],{position:'right',grid:{drawOnChartArea:false},suggestedMin:yi1===3?3:undefined,suggestedMax:yi1===3?13:undefined});
+y:ax(Y[yi][0],tr(yi))};
+if(two)sc.y2=ax(Y[yi1][0],{position:'right',grid:{drawOnChartArea:false},...tr(yi1)});
 chart[x]=new Chart($('ch'+i),{type:'line',plugins:[bnd({y:yi===3||(lay&&!two&&yi1===3),y2:two&&yi1===3})],data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false,axis:'x'},
 plugins:{decimation:{enabled:true,algorithm:'lttb',samples:1200},legend:{labels:{color:fg}}},scales:sc}})}
 function draw(){drawP(1);drawP(2)}

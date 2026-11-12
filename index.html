@@ -44,7 +44,7 @@ th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--bd);white-s
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-const Y=[['Pressure (mpa)',0,1],['Resistance',1,1],['Flow (µL/min)',2,1],['Temperature (°C)',3,.01],['Systolic (mpa)',4,1],['Diastolic (mpa)',5,1],['Runtime (ms)',6,1]];
+const Y=[['Pressure (mpa)',0,1],['Resistance',1,1],['Flow (mL/min)',2,.001],['Temperature (°C)',3,.01],['Systolic (mpa)',4,1],['Diastolic (mpa)',5,1],['Runtime (ms)',6,1]];
 const COL=['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#65a30d'];
 const P=i=>`<div class="card"><h2>Graph ${i}</h2><div class="grid" style="margin-bottom:10px"><div><label>X axis</label><select id="xs${i}"><option value="e">Elapsed time (h) – compare tests</option><option value="c">Date and time</option></select></div><div><label>Y axis</label><select id="ys${i}"></select></div></div><div class="cv"><canvas id="ch${i}"></canvas></div><div class="row" id="ex${i}" style="margin-top:10px"><button id="png${i}">Export PNG</button><button id="pdf${i}">Export PDF</button><span id="em${i}" style="color:var(--mut);font-size:13px"></span></div>${i==1?'<label class="ov"><input type="checkbox" id="ov">Show Graph 1 as a layer in Graph 2 (semi-transparent)</label>':''}<div class="sc" style="margin-top:10px"><table id="st${i}"></table></div></div>`;
 $('panels').innerHTML=P(1)+P(2);
